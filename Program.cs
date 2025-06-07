@@ -10,6 +10,9 @@ namespace MatrixGame
 
         static void Main(string[] args)
         {
+
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
             while (currentState != GameState.Exit)
             {
                 switch (currentState)

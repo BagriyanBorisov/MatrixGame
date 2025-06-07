@@ -1,5 +1,6 @@
 ﻿using MatrixGame.Data;
 using MatrixGame.Models;
+using System.Threading;
 using static MatrixGame.Constants;
 
 namespace MatrixGame.GameScreens
@@ -9,7 +10,8 @@ namespace MatrixGame.GameScreens
         static char[,] map = new char[MatrixSize, MatrixSize];
         static Character player;
         static List<Enemy> enemies = new List<Enemy>();
-        
+        static Random rng = new Random();
+
 
 
         public static void Run()
@@ -20,6 +22,7 @@ namespace MatrixGame.GameScreens
             
            while(true)
             {
+                Console.Clear();
                 if(player.Health <= 0)
                 {
                     Console.WriteLine("You have died. Game over.");
@@ -28,6 +31,7 @@ namespace MatrixGame.GameScreens
                     return;
                 }
 
+                SpawnEnemy();
                 DrawMap();
                 Console.WriteLine("[1]Move or [2]Attack? (ESC to Exit)");
 
@@ -41,10 +45,49 @@ namespace MatrixGame.GameScreens
 
                 else Console.WriteLine("Invalid option. Try again.");
 
+                UpdateEnemies();
+
 
             }
 
            
+        }
+
+        private static void UpdateEnemies()
+        {
+            foreach (var e in enemies.ToList())
+            {
+                int dx = player.X - e.X;
+                int dy = player.Y - e.Y;
+
+                if (Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1)
+                {
+                    player.Health -= e.Damage;
+                    Console.WriteLine($" Monster at ({e.X},{e.Y}) hit you for {e.Damage}!");
+                    if (player.Health < 0) player.Health = 0;
+                }
+                else
+                {
+                    if (dx != 0) e.X += Math.Sign(dx);
+                    if (dy != 0) e.Y += Math.Sign(dy);
+                }
+            }
+            Console.ReadKey();
+        }
+
+        private static void SpawnEnemy()
+        {
+            Enemy e = new Enemy();
+            int x, y;
+            do
+            {
+                x = rng.Next(0, MatrixSize);
+                y = rng.Next(0, MatrixSize);
+            } while ((x == player.X && y == player.Y) || enemies.Any(е => е.X == x && е.Y == y));
+
+            e.X = x;
+            e.Y = y;
+            enemies.Add(e);
         }
 
         private static void Move()
@@ -100,18 +143,26 @@ namespace MatrixGame.GameScreens
             Array.Clear(map, 0, map.Length);
             map[player.Y, player.X] = player.Symbol;
 
-            foreach (var m in enemies)
-                map[m.Y, m.X] = EnemySymbol;
+            foreach (var e in enemies)
+                map[e.Y, e.X] = EnemySymbol;
 
             for (int y = 0; y < MatrixSize; y++)
             {
+                string row = "";
                 for (int x = 0; x < MatrixSize; x++)
                 {
                     char tile = map[y, x];
-                    Console.Write(tile == '\0' ? TileEmpty : tile);
+                    row += tile == '\0' ? TileEmpty : tile;
                 }
-                Console.WriteLine();
+
+                int pad = Console.WindowWidth - row.Length;
+                if (pad > 0)
+                    row = row.PadRight(Console.WindowWidth);
+
+                Console.WriteLine(row);
             }
+
+            Console.WriteLine();
         }
 
 
