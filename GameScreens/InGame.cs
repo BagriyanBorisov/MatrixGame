@@ -11,18 +11,84 @@ namespace MatrixGame.GameScreens
         static List<Enemy> enemies = new List<Enemy>();
         
 
+
         public static void Run()
         {
            Console.WriteLine("Welcome to the Matrix Game!");
            player = LoadLastPlayerAsCharacter();
 
-           DrawMap();
+            
+           while(true)
+            {
+                if(player.Health <= 0)
+                {
+                    Console.WriteLine("You have died. Game over.");
+                    Console.WriteLine("Press any key to exit.");
+                    Console.ReadKey();
+                    return;
+                }
+
+                DrawMap();
+                Console.WriteLine("[1]Move or [2]Attack? (ESC to Exit)");
+
+                var input = Console.ReadKey(true).Key;
+                if (input == ConsoleKey.Escape)
+                    return;
+
+                if (input == ConsoleKey.D1 || input == ConsoleKey.NumPad1) Move();
+
+                else if (input == ConsoleKey.D2 || input == ConsoleKey.NumPad2) return; // todo
+
+                else Console.WriteLine("Invalid option. Try again.");
+
+
+            }
+
+           
+        }
+
+        private static void Move()
+        {
+            Console.WriteLine($"Move with: {MoveKeys}");
+            ConsoleKey key = Console.ReadKey(true).Key;
+
+            int newX = player.X;
+            int newY = player.Y;
+
+            switch (key)
+            {
+                case ConsoleKey.W: newY--; break;
+                case ConsoleKey.S: newY++; break;
+                case ConsoleKey.A: newX--; break;
+                case ConsoleKey.D: newX++; break;
+                case ConsoleKey.Q: newX--; newY--; break;
+                case ConsoleKey.E: newX++; newY--; break;
+                case ConsoleKey.Z: newX--; newY++; break;
+                case ConsoleKey.X: newX++; newY++; break;
+            }
+
+            if (CheckBoundaries(newX, newY))
+            {
+                player.X = newX;
+                player.Y = newY;
+            }
+        }
+
+
+        private static bool CheckBoundaries(int x, int y)
+        {
+            return x >= 0 && x < MatrixSize &&
+                   y >= 0 && y < MatrixSize;
         }
 
 
         private static void DrawMap()
         {
             Console.Clear();
+
+            int verticalPadding = (Console.WindowHeight - MatrixSize - 5) / 2;
+            for (int i = 0; i < verticalPadding; i++)
+                Console.WriteLine();
 
 
             //HUD
