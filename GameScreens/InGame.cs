@@ -1,6 +1,5 @@
 ﻿using MatrixGame.Data;
 using MatrixGame.Models;
-using System.Threading;
 using static MatrixGame.Constants;
 
 namespace MatrixGame.GameScreens
@@ -13,14 +12,14 @@ namespace MatrixGame.GameScreens
         static Random rng = new Random();
 
 
-
         public static void Run()
         {
            Console.WriteLine("Welcome to the Matrix Game!");
            player = LoadLastPlayerAsCharacter();
+           var validAction = false;
+           SpawnEnemy();
 
-            
-           while(true)
+            while (true)
             {
                 Console.Clear();
                 if(player.Health <= 0)
@@ -29,101 +28,30 @@ namespace MatrixGame.GameScreens
                     Console.WriteLine("Press any key to exit.");
                     Console.ReadKey();
                     return;
-                }
-
-                SpawnEnemy();
+                } 
                 DrawMap();
                 Console.WriteLine("[1]Move or [2]Attack? (ESC to Exit)");
 
+                validAction = false;
                 var input = Console.ReadKey(true).Key;
+
                 if (input == ConsoleKey.Escape)
                     return;
 
-                if (input == ConsoleKey.D1 || input == ConsoleKey.NumPad1) Move();
+                if (input == ConsoleKey.D1 || input == ConsoleKey.NumPad1) 
+                    validAction = Move();
 
-                else if (input == ConsoleKey.D2 || input == ConsoleKey.NumPad2) return; // todo
+                else if (input == ConsoleKey.D2 || input == ConsoleKey.NumPad2)
+                    validAction = Attack();
 
                 else Console.WriteLine("Invalid option. Try again.");
 
-                UpdateEnemies();
+                if (validAction) 
+                    UpdateEnemies(); 
+                    SpawnEnemy();
 
-
-            }
-
-           
+            } 
         }
-
-        private static void UpdateEnemies()
-        {
-            foreach (var e in enemies.ToList())
-            {
-                int dx = player.X - e.X;
-                int dy = player.Y - e.Y;
-
-                if (Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1)
-                {
-                    player.Health -= e.Damage;
-                    Console.WriteLine($" Monster at ({e.X},{e.Y}) hit you for {e.Damage}!");
-                    if (player.Health < 0) player.Health = 0;
-                }
-                else
-                {
-                    if (dx != 0) e.X += Math.Sign(dx);
-                    if (dy != 0) e.Y += Math.Sign(dy);
-                }
-            }
-            Console.ReadKey();
-        }
-
-        private static void SpawnEnemy()
-        {
-            Enemy e = new Enemy();
-            int x, y;
-            do
-            {
-                x = rng.Next(0, MatrixSize);
-                y = rng.Next(0, MatrixSize);
-            } while ((x == player.X && y == player.Y) || enemies.Any(е => е.X == x && е.Y == y));
-
-            e.X = x;
-            e.Y = y;
-            enemies.Add(e);
-        }
-
-        private static void Move()
-        {
-            Console.WriteLine($"Move with: {MoveKeys}");
-            ConsoleKey key = Console.ReadKey(true).Key;
-
-            int newX = player.X;
-            int newY = player.Y;
-
-            switch (key)
-            {
-                case ConsoleKey.W: newY--; break;
-                case ConsoleKey.S: newY++; break;
-                case ConsoleKey.A: newX--; break;
-                case ConsoleKey.D: newX++; break;
-                case ConsoleKey.Q: newX--; newY--; break;
-                case ConsoleKey.E: newX++; newY--; break;
-                case ConsoleKey.Z: newX--; newY++; break;
-                case ConsoleKey.X: newX++; newY++; break;
-            }
-
-            if (CheckBoundaries(newX, newY))
-            {
-                player.X = newX;
-                player.Y = newY;
-            }
-        }
-
-
-        private static bool CheckBoundaries(int x, int y)
-        {
-            return x >= 0 && x < MatrixSize &&
-                   y >= 0 && y < MatrixSize;
-        }
-
 
         private static void DrawMap()
         {
@@ -165,6 +93,128 @@ namespace MatrixGame.GameScreens
             Console.WriteLine();
         }
 
+        private static bool Move()
+        {
+            Console.WriteLine($"Move with: {MoveKeys}");
+            ConsoleKey key = Console.ReadKey(true).Key;
+
+            int newX = player.X;
+            int newY = player.Y;
+
+            switch (key)
+            {
+                case ConsoleKey.W: newY--; break;
+                case ConsoleKey.S: newY++; break;
+                case ConsoleKey.A: newX--; break;
+                case ConsoleKey.D: newX++; break;
+                case ConsoleKey.Q: newX--; newY--; break;
+                case ConsoleKey.E: newX++; newY--; break;
+                case ConsoleKey.Z: newX--; newY++; break;
+                case ConsoleKey.X: newX++; newY++; break;
+            }
+
+            if (!CheckBoundaries(newX, newY))
+            {
+                Console.WriteLine("You can't move there!");
+                return false;
+            }
+
+            player.X = newX;
+            player.Y = newY;
+            return true;
+
+        }
+
+        private static bool Attack()
+        {
+            var targets = enemies
+                .Where(e => CheckRange(player, e))
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                Console.WriteLine("No available targets in your range.");
+                Console.ReadKey();
+                return false;
+            }
+
+            Console.WriteLine("Choose a target to attack:");
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var e = targets[i];
+                Console.WriteLine($"{i + 1}) Monster at ({e.X},{e.Y}) - HP: {e.Health}");
+            }
+
+            int choice = -1;
+            while (choice < 1 || choice > targets.Count)
+            {
+                Console.Write("Your pick: ");
+                int.TryParse(Console.ReadLine(), out choice);
+            }
+
+            var target = targets[choice - 1];
+            target.Health -= player.Damage;
+
+            Console.WriteLine($"You dealt {player.Damage} damage!");
+            if (target.Health <= 0)
+            {
+                Console.WriteLine($"Monster at position({target.X},{target.Y}) defeated!");
+                enemies.Remove(target);
+            }
+
+            Console.ReadKey();
+            return true;
+        }
+
+        private static void UpdateEnemies()
+        {
+            foreach (var e in enemies.ToList())
+            {
+                int dx = player.X - e.X;
+                int dy = player.Y - e.Y;
+
+                if (Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1)
+                {
+                    player.Health -= e.Damage;
+                    Console.WriteLine($" Monster at ({e.X},{e.Y}) hit you for {e.Damage}!");
+                    if (player.Health < 0) player.Health = 0;
+                }
+                else
+                {
+                    if (dx != 0) e.X += Math.Sign(dx);
+                    if (dy != 0) e.Y += Math.Sign(dy);
+                }
+            }
+            Console.ReadKey();
+        }
+
+        private static void SpawnEnemy()
+        {
+            Enemy e = new Enemy();
+            int x, y;
+            do
+            {
+                x = rng.Next(0, MatrixSize);
+                y = rng.Next(0, MatrixSize);
+            } while ((x == player.X && y == player.Y) || enemies.Any(е => е.X == x && е.Y == y));
+
+            e.X = x;
+            e.Y = y;
+            enemies.Add(e);
+        }
+
+        private static bool CheckBoundaries(int x, int y)
+        {
+            return x >= 0 && x < MatrixSize &&
+                   y >= 0 && y < MatrixSize;
+        }
+
+        private static bool CheckRange(Character attacker, Character target)
+        {
+            int dx = Math.Abs(attacker.X - target.X);
+            int dy = Math.Abs(attacker.Y - target.Y);
+            return dx <= attacker.Range && dy <= attacker.Range;
+        }
 
         private static Character LoadLastPlayerAsCharacter()
         {
