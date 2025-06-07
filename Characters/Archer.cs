@@ -8,7 +8,7 @@
             Agility = 4;
             Intelligence = 0;
             Range = 2;
-            Symbol = '#';
+            Symbol = Constants.ArcherSymbol;
             Setup();
         }
     }

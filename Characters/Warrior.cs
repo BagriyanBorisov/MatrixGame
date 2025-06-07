@@ -8,7 +8,7 @@
             Agility = 3;
             Intelligence = 0;
             Range = 1;
-            Symbol = '@';
+            Symbol = Constants.WarriorSymbol;
             Setup();
         }
     }

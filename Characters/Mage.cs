@@ -8,7 +8,7 @@
             Agility = 1;
             Intelligence = 3;
             Range = 3;
-            Symbol = '*';
+            Symbol = Constants.MageSymbol;
             Setup();
         }
     }

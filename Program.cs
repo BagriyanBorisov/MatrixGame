@@ -20,7 +20,7 @@ namespace MatrixGame
                     case GameState.CharacterSelect:
                         currentState = CharacterSelect.Run();
                         break;
-                    case GameState.InGame: // TODO
+                    case GameState.InGame: InGame.Run();
                         return;
 
                 }

@@ -10,7 +10,7 @@
             Agility = rng.Next(1, 4);
             Intelligence = rng.Next(1, 4);
             Range = 1;
-            Symbol = '◙';
+            Symbol = Constants.EnemySymbol;
             Setup();
         }
     }
