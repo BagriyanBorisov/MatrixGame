@@ -8,7 +8,9 @@
         public int Agility;
         public int Intelligence;
         public int Range;
+        public int SpellCost;
         public char Symbol;
+        
 
         // Setup
         public int Health;
@@ -25,6 +27,13 @@
             Health = Strength * 5;
             Mana = Intelligence * 3;
             Damage = Agility * 2;
+        }
+
+        public abstract IEnumerable<(int dx, int dy)> GetSpellPattern();
+
+        public virtual ConsoleColor GetColor()
+        {
+            return ConsoleColor.White;
         }
     }
 }

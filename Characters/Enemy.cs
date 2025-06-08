@@ -13,5 +13,12 @@
             Symbol = Constants.EnemySymbol;
             Setup();
         }
+
+        public override ConsoleColor GetColor() => ConsoleColor.DarkRed;
+
+        public override IEnumerable<(int dx, int dy)> GetSpellPattern()
+        {
+            return Enumerable.Empty<(int dx, int dy)>();
+        }
     }
 }

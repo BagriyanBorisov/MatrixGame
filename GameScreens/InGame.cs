@@ -1,5 +1,7 @@
 ﻿using MatrixGame.Data;
 using MatrixGame.Models;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using static MatrixGame.Constants;
 
 namespace MatrixGame.GameScreens
@@ -9,96 +11,441 @@ namespace MatrixGame.GameScreens
         static char[,] map = new char[MatrixSize, MatrixSize];
         static Character player;
         static List<Enemy> enemies = new List<Enemy>();
+        private static List<string> BattleLog = new();
         static Random rng = new Random();
+        static int EnemiesKilled = 0;
+        static int playerTurns = 0;
+
+
+        static int LeftPadding = (Console.WindowWidth - MatrixSize * 2) / 2;
+        static int TopPadding = (Console.WindowHeight - (MatrixSize + HudHeight)) / 2;
+        const int HudHeight = 5;
+        const int SidePanelWidth = 25;
+        const int LogLinesToShow = 15;
+        static int MapLeft => (Console.WindowWidth - (MatrixSize * 2 + 2)) / 2;
+        static int MapTop => (Console.WindowHeight - (MatrixSize + 2 + HudHeight)) / 2 + HudHeight;
 
 
         public static void Run()
         {
-            Console.WriteLine("Welcome to the Matrix Game!");
+            WriteLineCentered("Welcome to the Matrix Game!", 5);
             player = LoadLastPlayerAsCharacter();
-            var validAction = false;
             SpawnEnemy();
 
             while (true)
             {
-                //Console.Clear();
+                Console.Clear();
                 if (player.Health <= 0)
                 {
-                    Console.WriteLine("You have died. Game over.");
-                    Console.WriteLine("Press any key to exit.");
+                    WriteLineCentered("You have died. Game over.", 5);
+                    WriteLineCentered("Press any key to exit.", 6);
                     Console.ReadKey();
                     return;
                 }
                 DrawMap();
-                Console.WriteLine("[1]Move or [2]Attack? (ESC to Exit)");
-
-                validAction = false;
-                var input = Console.ReadKey(true).Key;
+                var validAction = false;
+                WriteLineCentered("Use W/A/S/D/Q/E/Z/X to move, [F] to cast your spell, ESC to exit.", 5);
+                ConsoleKey? input = Console.ReadKey(true).Key;
 
                 if (input == ConsoleKey.Escape)
                     return;
 
-                if (input == ConsoleKey.D1 || input == ConsoleKey.NumPad1)
-                    validAction = Move();
-
-                else if (input == ConsoleKey.D2 || input == ConsoleKey.NumPad2)
-                    validAction = Attack();
-
-                else Console.WriteLine("Invalid option. Try again.");
+                if (input == ConsoleKey.F)
+                {
+                    validAction = UseSpell();
+                }
+                else
+                {
+                    if (IsMovementKey(input))
+                    {
+                        if (Move(input))
+                        {
+                            validAction = true;
+                            playerTurns++;
+                        }
+                    }
+                    else
+                    {
+                        if (PromptForAttack(input))
+                        {
+                            validAction = true;
+                            playerTurns++;
+                        }
+                    }
+                }
 
                 if (validAction)
                 {
-                    UpdateEnemies();
-                    SpawnEnemy();
+                    if (playerTurns >= 2)
+                    {
+                        UpdateEnemies();
+                        SpawnEnemy();
+                        playerTurns = 0;
+                    }
                 }
+                else
+                {
+                    WriteLineCentered("Invalid action. Please try again.", 7);
+                    Console.ReadKey();
+                }
+
+
             }
         }
 
-        private static void DrawMap()
+        private static void AnimateWhirlwind(Character player)
         {
-            //Console.Clear();
+            var offsets = new (int dx, int dy)[]
+            {
+                (-1,-1),(0,-1),(1,-1),
+                (1, 0),(1, 1),(0, 1),
+                (-1, 1),(-1,0)
+            };
 
-            int verticalPadding = (Console.WindowHeight - MatrixSize - 5) / 2;
-            for (int i = 0; i < verticalPadding; i++)
-                Console.WriteLine();
+            foreach (var (dx, dy) in offsets)
+            {
+                int x = player.X + dx, y = player.Y + dy;
+                if (x < 0 || y < 0 || x >= MatrixSize || y >= MatrixSize) continue;
 
+                // draw slash
+                Console.SetCursorPosition(LeftPadding + x * 2, TopPadding + y + HudHeight);
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("*");
+                Console.ResetColor();
 
-            //HUD
-            Console.WriteLine($"Health: {player.Health}   Mana: {player.Mana}   Damage: {player.Damage}");
-            Console.WriteLine($"STR: {player.Strength}    AGI: {player.Agility}   INT: {player.Intelligence}   Range: {player.Range}");
-            Console.WriteLine($"Position: ({player.X}, {player.Y})");
-            Console.WriteLine();
+                Thread.Sleep(75);
+
+                // restore tile
+                Console.SetCursorPosition(LeftPadding + x * 2, TopPadding + y + HudHeight);
+                DrawSingleTile(x, y);
+            }
+        }
+
+        private static void AnimateFireSpell()
+        {
+            int px = player.X, py = player.Y;
+            int frameDelay = 50;
+
+            // 1) draw vertical
+            Console.ForegroundColor = ConsoleColor.Red;
+            for (int dy = -MatrixSize; dy <= MatrixSize; dy++)
+            {
+                int y = py + dy;
+                if (y < 0 || y >= MatrixSize) continue;
+                int screenX = LeftPadding + px * 2;
+                int screenY = TopPadding + HudHeight + y;
+                Console.SetCursorPosition(screenX, screenY);
+                Console.Write("█");
+                Thread.Sleep(frameDelay);
+            }
+
+            // 2) draw horizontal
+            for (int dx = -MatrixSize; dx <= MatrixSize; dx++)
+            {
+                int x = px + dx;
+                if (x < 0 || x >= MatrixSize) continue;
+                int screenX = LeftPadding + x * 2;
+                int screenY = TopPadding + HudHeight + py;
+                Console.SetCursorPosition(screenX, screenY);
+                Console.Write("█");
+                Thread.Sleep(frameDelay);
+            }
+            Console.ResetColor();
+
+            // 3) linger on full cross
+            Thread.Sleep(200);
+
+            // 4) clear it by redrawing only those cross tiles
+            //    (or you can simply call DrawMap() to redraw everything)
+            for (int dy = -MatrixSize; dy <= MatrixSize; dy++)
+            {
+                int y = py + dy;
+                if (y < 0 || y >= MatrixSize) continue;
+                int screenX = LeftPadding + px * 2;
+                int screenY = TopPadding + HudHeight + y;
+                Console.SetCursorPosition(screenX, screenY);
+                DrawSingleTile(px, y);
+            }
+            for (int dx = -MatrixSize; dx <= MatrixSize; dx++)
+            {
+                int x = px + dx;
+                if (x < 0 || x >= MatrixSize) continue;
+                int screenX = LeftPadding + x * 2;
+                int screenY = TopPadding + HudHeight + py;
+                Console.SetCursorPosition(screenX, screenY);
+                DrawSingleTile(x, py);
+            }
+        }
+
+        private static void AnimatePiercingShot(Character player, int dx, int dy)
+        {
+            int tx = player.X + dx, ty = player.Y + dy;
+
+            string arrowSymbol = (dx, dy) switch
+            {
+                (0, -1) => "↑",
+                (0, 1) => "↓",
+                (-1, 0) => "←",
+                (1, 0) => "→",
+                (-1, -1) => "↖",
+                (-1, 1) => "↙",
+                (1, -1) => "↗",
+                (1, 1) => "↘",
+                _ => "?"
+            };
+
+            while (tx >= 0 && ty >= 0 && tx < MatrixSize && ty < MatrixSize)
+            {
+                Console.SetCursorPosition(LeftPadding + tx * 2, TopPadding + ty + HudHeight);
+                Console.ForegroundColor = ConsoleColor.Green; Console.Write(arrowSymbol); Console.ResetColor();
+                Thread.Sleep(100);
+
+                // restore
+                Console.SetCursorPosition(LeftPadding + tx * 2, TopPadding + ty + HudHeight);
+                DrawSingleTile(tx, ty);
+
+                tx += dx; ty += dy;
+            }
+        }
+
+        static void DrawSingleTile(int x, int y)
+        {
+            var tile = map[y, x];
+            char symbol = tile == '\0' ? TileEmpty : tile;
+            Console.Write(symbol);
+            if (x < MatrixSize - 1) Console.Write(" ");
+        }
+
+        private static bool UseSpell()
+        {
+            if (player.Mana < player.SpellCost)
+            {
+                BattleLog.Add("Not enough mana!");
+                return false;
+            }
+            else
+            {
+                // pay cost
+                player.Mana -= player.SpellCost;
+
+                IEnumerable<(int dx, int dy)> pattern;
+                switch (player)
+                {
+                    case Warrior _:
+                        AnimateWhirlwind(player);
+                        pattern = player.GetSpellPattern();
+                        break;
+
+                    case Mage _:
+                        AnimateFireSpell();
+                        pattern = player.GetSpellPattern();
+                        break;
+
+                    case Archer archer:
+                        WriteLineCentered("Choose direction for Piercing Shot (W/A/S/D):", 6);
+                        var key = Console.ReadKey(true).Key;
+                        var (dx, dy) = key switch
+                        {
+                            ConsoleKey.W => (0, -1),
+                            ConsoleKey.S => (0, 1),
+                            ConsoleKey.A => (-1, 0),
+                            ConsoleKey.D => (1, 0),
+                            _ => (1, 0) // // default to right if invalid key
+                        };
+                        AnimatePiercingShot(player, dx, dy);
+                        pattern = archer.GetSpellPattern(dx, dy);
+                        break;
+
+                    default:
+                        pattern = Enumerable.Empty<(int, int)>();
+                        break;
+                }
+
+                foreach (var (dx, dy) in pattern)
+                {
+                    int tx = player.X + dx;
+                    int ty = player.Y + dy;
+
+                    if (tx < 0 || ty < 0 || tx >= MatrixSize || ty >= MatrixSize)
+                        continue;
+
+                    var target = enemies.FirstOrDefault(e => e.X == tx && e.Y == ty);
+                    if (target != null)
+                    {
+                        target.Health -= player.Damage;
+                        BattleLog.Add($"{player.Symbol} hits enemy at ({tx},{ty}) for {player.Damage}!");
+
+                        if (target.Health <= 0)
+                            KillEnemy(target);
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        public static void KillEnemy(Enemy target)
+        {
+            enemies.Remove(target);
+            EnemiesKilled++;
+            BattleLog.Add($"Enemy at ({target.X},{target.Y}) died!");
+
+            if (EnemiesKilled % 4 == 0)
+            {
+                player.Mana += 1;
+                player.Health += 1;
+                BattleLog.Add($"+1 Mana restored for {EnemiesKilled} kills!");
+            }
+        }
+
+        private static bool IsMovementKey(ConsoleKey? key)
+        {
+            return key is ConsoleKey.W or ConsoleKey.A or ConsoleKey.S or ConsoleKey.D
+                or ConsoleKey.Q or ConsoleKey.E or ConsoleKey.Z or ConsoleKey.X;
+        }
+
+        private static bool PromptForAttack(ConsoleKey? input)
+        {
+            var inRange = GetEnemiesInRange(player);
+
+            if (inRange.Count == 0)
+                return false;
+
+            if (input.HasValue)
+            {
+                int index = input.Value switch
+                {
+                    >= ConsoleKey.D1 and <= ConsoleKey.D9 => input.Value - ConsoleKey.D1,
+                    >= ConsoleKey.NumPad1 and <= ConsoleKey.NumPad9 => input.Value - ConsoleKey.NumPad1,
+                    _ => -1
+                };
+
+                if (index >= 0 && index < inRange.Count)
+                {
+                    var enemy = inRange[index];
+                    enemy.Health -= player.Damage;
+                    BattleLog.Add($"You attacked enemy at ({enemy.X},{enemy.Y}) for {player.Damage}!");
+
+                    if (enemy.Health <= 0)
+                        KillEnemy(enemy);
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static void WriteLineCentered(string text, int row)
+        {
+            int x = (Console.WindowWidth - text.Length) / 2;
+            Console.SetCursorPosition(x, row);
+            Console.Write(text);
+        }
+
+        static (int col, int row) MapToScreen(int mapX, int mapY)
+        {
+            int originRow = (Console.WindowHeight - (MatrixSize + 2 + 4)) / 2 + 5; 
+            int originCol = (Console.WindowWidth - (MatrixSize * 2 + 2)) / 2 + 1; 
+
+            return (originCol + mapX * 2, originRow + mapY);
+        }
+
+        private static List<Enemy> GetEnemiesInRange(Character attacker)
+        {
+            return enemies
+                .Where(e => CheckRange(attacker, e))
+                .ToList();
+        }
+
+        private static void DrawMap(bool showLog = true)
+        {
+            Console.Clear();
+            var hudLeft = (Console.WindowWidth - 40) / 2;
+            Console.SetCursorPosition(hudLeft, 1);
+            WriteLineCentered($"Health: {player.Health}  Mana: {player.Mana}  Dmg: {player.Damage}",1);
+            Console.SetCursorPosition(hudLeft, 2);
+            WriteLineCentered($"STR: {player.Strength}  AGI: {player.Agility}  INT: {player.Intelligence}  Range: {player.Range}", 2);
 
             Array.Clear(map, 0, map.Length);
             map[player.Y, player.X] = player.Symbol;
-
             foreach (var e in enemies)
                 map[e.Y, e.X] = EnemySymbol;
 
+            int topBorderY = MapToScreen(0, 0).row - 1;
+            int leftBorderX = MapToScreen(0, 0).col - 1;
+
+            Console.SetCursorPosition(leftBorderX, topBorderY);
+            Console.Write("╔" + new string('═', MatrixSize * 2) + "╗");
+
             for (int y = 0; y < MatrixSize; y++)
             {
-                string row = "";
+                Console.SetCursorPosition(leftBorderX, topBorderY + y + 1);
+                Console.Write("║");
+
                 for (int x = 0; x < MatrixSize; x++)
                 {
-                    char tile = map[y, x];
-                    row += tile == '\0' ? TileEmpty : tile;
+                    var tile = map[y, x];
+                    Console.ForegroundColor = tile switch
+                    {
+                        var t when t == player.Symbol => player.GetColor(),
+                        var t when t == EnemySymbol => ConsoleColor.Red,
+                        _ => ConsoleColor.DarkGray
+                    };
+                    
+                    Console.Write(tile == '\0' ? $"{TileEmpty} " : $"{tile} ");
+       
                 }
 
-                int pad = Console.WindowWidth - row.Length;
-                if (pad > 0)
-                    row = row.PadRight(Console.WindowWidth);
-
-                Console.WriteLine(row);
+                Console.ResetColor();
+                Console.Write("║");
             }
 
-            Console.WriteLine();
+            Console.SetCursorPosition(leftBorderX, topBorderY + MatrixSize + 1);
+            Console.Write("╚" + new string('═', MatrixSize * 2) + "╝");
+
+            int logStartX = MapLeft + MatrixSize * 2 + 4;
+            int logStartY = MapTop;
+
+            Console.ForegroundColor = ConsoleColor.Gray;
+            var recentLines = BattleLog.TakeLast(LogLinesToShow).ToList();
+
+            for (int i = 0; i < recentLines.Count; i++)
+            {
+                Console.SetCursorPosition(logStartX, logStartY + i);
+                Console.Write(recentLines[i].PadRight(SidePanelWidth));
+            }
+            Console.ResetColor();
+
+
+            var inRange = GetEnemiesInRange(player);
+            int optionX = MapLeft - SidePanelWidth - 2;
+            int optionY = MapTop;
+
+            // Draw options for enemies in range
+            
+            if (inRange.Count == 0)
+            {
+                Console.SetCursorPosition(optionX, optionY);
+                Console.Write("No enemies in range".PadRight(SidePanelWidth - 2));
+                return;
+            }
+
+            Console.SetCursorPosition(optionX, optionY);
+            Console.WriteLine("Enemies in range:".PadRight(SidePanelWidth - 2 ));
+
+
+            for (int i = 0; i < inRange.Count; i++)
+            {
+                var enemy = inRange[i];
+                Console.SetCursorPosition(optionX, optionY + i);
+                Console.Write($"{i + 1}) Enemy ({enemy.X},{enemy.Y}) HP: {enemy.Health}".PadRight(SidePanelWidth));
+            }
+
         }
 
-        private static bool Move()
+        private static bool Move(ConsoleKey? key)
         {
-            Console.WriteLine($"Move with: {MoveKeys}");
-            ConsoleKey key = Console.ReadKey(true).Key;
-
             int newX = player.X;
             int newY = player.Y;
 
@@ -112,18 +459,20 @@ namespace MatrixGame.GameScreens
                 case ConsoleKey.E: newX++; newY--; break;
                 case ConsoleKey.Z: newX--; newY++; break;
                 case ConsoleKey.X: newX++; newY++; break;
+                default:
+                    return false;
             }
 
             if (!CheckBoundaries(newX, newY))
             {
-                Console.WriteLine("You can't move there!");
+                WriteLineCentered("You can't move there!",6);
                 return false;
             }
 
             bool isOccupied = enemies.Any(e => e.X == newX && e.Y == newY);
             if (isOccupied)
             {
-                Console.WriteLine("You can't walk onto an enemy!");
+                WriteLineCentered("You can't walk onto an enemy!", 6);
                 return false;
             }
 
@@ -132,47 +481,6 @@ namespace MatrixGame.GameScreens
             player.Y = newY;
             return true;
 
-        }
-
-        private static bool Attack()
-        {
-            var targets = enemies
-                .Where(e => CheckRange(player, e))
-                .ToList();
-
-            if (targets.Count == 0)
-            {
-                Console.WriteLine("No available targets in your range.");
-                Console.ReadKey();
-                return false;
-            }
-
-            Console.WriteLine("Choose a target to attack:");
-            for (int i = 0; i < targets.Count; i++)
-            {
-                var e = targets[i];
-                Console.WriteLine($"{i + 1}) Monster at ({e.X},{e.Y}) - HP: {e.Health}");
-            }
-
-            int choice = -1;
-            while (choice < 1 || choice > targets.Count)
-            {
-                Console.Write("Your pick: ");
-                int.TryParse(Console.ReadLine(), out choice);
-            }
-
-            var target = targets[choice - 1];
-            target.Health -= player.Damage;
-
-            Console.WriteLine($"You dealt {player.Damage} damage!");
-            if (target.Health <= 0)
-            {
-                Console.WriteLine($"Monster at position({target.X},{target.Y}) defeated!");
-                enemies.Remove(target);
-            }
-
-            Console.ReadKey();
-            return true;
         }
 
         private static void UpdateEnemies()
@@ -188,7 +496,7 @@ namespace MatrixGame.GameScreens
                 if (isNextToPlayer)
                 {
                     player.Health -= e.Damage;
-                    Console.WriteLine($" Monster at ({e.X},{e.Y}) hit you for {e.Damage}!");
+                    BattleLog.Add($" Monster at ({e.X},{e.Y}) hit you for {e.Damage}!");
                     if (player.Health < 0) player.Health = 0;
                     continue;
                 }
@@ -205,7 +513,6 @@ namespace MatrixGame.GameScreens
                 }
 
             }
-            Console.ReadKey();
         }
 
         private static void SpawnEnemy()
