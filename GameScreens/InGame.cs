@@ -46,10 +46,11 @@ namespace MatrixGame.GameScreens
 
                 else Console.WriteLine("Invalid option. Try again.");
 
-                if (validAction) 
-                    UpdateEnemies(); 
+                if (validAction)
+                {
+                    UpdateEnemies();
                     SpawnEnemy();
-
+                }
             } 
         }
 
