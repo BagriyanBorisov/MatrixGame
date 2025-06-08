@@ -14,21 +14,21 @@ namespace MatrixGame.GameScreens
 
         public static void Run()
         {
-           Console.WriteLine("Welcome to the Matrix Game!");
-           player = LoadLastPlayerAsCharacter();
-           var validAction = false;
-           SpawnEnemy();
+            Console.WriteLine("Welcome to the Matrix Game!");
+            player = LoadLastPlayerAsCharacter();
+            var validAction = false;
+            SpawnEnemy();
 
             while (true)
             {
-                Console.Clear();
-                if(player.Health <= 0)
+                //Console.Clear();
+                if (player.Health <= 0)
                 {
                     Console.WriteLine("You have died. Game over.");
                     Console.WriteLine("Press any key to exit.");
                     Console.ReadKey();
                     return;
-                } 
+                }
                 DrawMap();
                 Console.WriteLine("[1]Move or [2]Attack? (ESC to Exit)");
 
@@ -38,7 +38,7 @@ namespace MatrixGame.GameScreens
                 if (input == ConsoleKey.Escape)
                     return;
 
-                if (input == ConsoleKey.D1 || input == ConsoleKey.NumPad1) 
+                if (input == ConsoleKey.D1 || input == ConsoleKey.NumPad1)
                     validAction = Move();
 
                 else if (input == ConsoleKey.D2 || input == ConsoleKey.NumPad2)
@@ -51,12 +51,12 @@ namespace MatrixGame.GameScreens
                     UpdateEnemies();
                     SpawnEnemy();
                 }
-            } 
+            }
         }
 
         private static void DrawMap()
         {
-            Console.Clear();
+            //Console.Clear();
 
             int verticalPadding = (Console.WindowHeight - MatrixSize - 5) / 2;
             for (int i = 0; i < verticalPadding; i++)
@@ -120,6 +120,14 @@ namespace MatrixGame.GameScreens
                 return false;
             }
 
+            bool isOccupied = enemies.Any(e => e.X == newX && e.Y == newY);
+            if (isOccupied)
+            {
+                Console.WriteLine("You can't walk onto an enemy!");
+                return false;
+            }
+
+
             player.X = newX;
             player.Y = newY;
             return true;
@@ -174,17 +182,28 @@ namespace MatrixGame.GameScreens
                 int dx = player.X - e.X;
                 int dy = player.Y - e.Y;
 
-                if (Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1)
+
+                bool isNextToPlayer = Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1;
+
+                if (isNextToPlayer)
                 {
                     player.Health -= e.Damage;
                     Console.WriteLine($" Monster at ({e.X},{e.Y}) hit you for {e.Damage}!");
                     if (player.Health < 0) player.Health = 0;
+                    continue;
                 }
-                else
+
+                int newX = e.X + (dx != 0 ? Math.Sign(dx) : 0);
+                int newY = e.Y + (dy != 0 ? Math.Sign(dy) : 0);
+
+                bool occupied = enemies.Any(other => other != e && other.X == newX && other.Y == newY);
+
+                if (!occupied)
                 {
-                    if (dx != 0) e.X += Math.Sign(dx);
-                    if (dy != 0) e.Y += Math.Sign(dy);
+                    e.X = newX;
+                    e.Y = newY;
                 }
+
             }
             Console.ReadKey();
         }
